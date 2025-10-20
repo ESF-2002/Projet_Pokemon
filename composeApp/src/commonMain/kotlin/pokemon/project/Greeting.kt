@@ -27,8 +27,6 @@ class Greeting {
         } catch (e: Exception) {
             println("Erreur lors de la récupération du Pokémon: ${e.message}")
             null
-        } finally {
-            client.close()
         }
     }
 }
