@@ -1,0 +1,51 @@
+appId: pokemon.project
+---
+
+- launchApp
+- assertVisible: "COMMENCER"
+
+# Démarrer le quiz
+- tapOn: "COMMENCER"
+- extendedWaitUntil:
+      visible: "Qui est ce Pokémon?"
+      timeout: 15000
+
+# Vérifier que le quiz est lancé
+- assertVisible: "Qui est ce Pokémon?"
+- assertVisible: "Score"
+
+# Vérifier que le score initial est 0
+- assertVisible:
+      text: "0"
+      below: "Score"
+
+# Attendre que l'image se charge
+- waitForAnimationToEnd
+
+# Prendre un screenshot
+- takeScreenshot: test_03_pokemon_displayed.png
+
+# Saisir une mauvaise réponse
+- tapOn:
+      text: "Nom en français"
+- inputText: "mauvaisnom"
+
+# Soumettre la réponse
+- tapOn: "✓ VÉRIFIER LA RÉPONSE"
+- waitForAnimationToEnd
+
+# Vérifier le feedback négatif
+- assertVisible: "❌ FAUX!"
+
+# Vérifier que la bonne réponse est affichée
+- assertVisible: "C'était:"
+
+# Vérifier que le score est toujours 0
+- assertVisible:
+      text: "0"
+      below: "Score"
+
+# Vérifier que le compteur de questions s'est quand même incrémenté
+- assertVisible: "2/10"
+
+- takeScreenshot: test_03_wrong_answer.png

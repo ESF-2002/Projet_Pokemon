@@ -1,0 +1,9 @@
+appId: pokemon.project
+---
+- launchApp
+- assertVisible: "COMMENCER"
+- tapOn: "COMMENCER"
+- extendedWaitUntil:
+    visible: "Qui est ce Pokémon?"
+    timeout: 10000
+- assertVisible: "Qui est ce Pokémon?"

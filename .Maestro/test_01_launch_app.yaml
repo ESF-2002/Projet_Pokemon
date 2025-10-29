@@ -1,0 +1,5 @@
+appId: pokemon.project
+---
+- launchApp
+- assertVisible: "🎮 POKÉMON QUIZ"
+- assertVisible: "COMMENCER"

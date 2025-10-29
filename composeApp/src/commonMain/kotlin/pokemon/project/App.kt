@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -173,6 +175,7 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .semantics { contentDescription = "menu_screen" }
             .verticalScroll(scrollState)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -257,7 +260,8 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
             text = "🟢 FACILE",
             description = "Noms en français, 30 secondes",
             isSelected = selectedDifficulty == Difficulty.EASY,
-            onClick = { selectedDifficulty = Difficulty.EASY }
+            onClick = { selectedDifficulty = Difficulty.EASY },
+            contentDesc = "difficulty_easy"
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -266,7 +270,8 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
             text = "🟡 NORMAL",
             description = "Noms en français, 30 secondes",
             isSelected = selectedDifficulty == Difficulty.NORMAL,
-            onClick = { selectedDifficulty = Difficulty.NORMAL }
+            onClick = { selectedDifficulty = Difficulty.NORMAL },
+            contentDesc = "difficulty_normal"
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -275,7 +280,8 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
             text = "🔴 DIFFICILE",
             description = "Noms en anglais, 30 secondes",
             isSelected = selectedDifficulty == Difficulty.HARD,
-            onClick = { selectedDifficulty = Difficulty.HARD }
+            onClick = { selectedDifficulty = Difficulty.HARD },
+            contentDesc = "difficulty_hard"
         )
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -284,7 +290,8 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
             onClick = { onStartGame(selectedDifficulty, selectedQuestions) },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(56.dp)
+                .semantics { contentDescription = "start_button" },
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary
             ),
@@ -306,11 +313,14 @@ fun DifficultyButton(
     text: String,
     description: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    contentDesc: String = ""
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = contentDesc },
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected)
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
@@ -365,6 +375,7 @@ fun QuizScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .semantics { contentDescription = "quiz_screen" }
             .verticalScroll(scrollState)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -375,6 +386,7 @@ fun QuizScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Card(
+                modifier = Modifier.semantics { contentDescription = "question_counter" },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -399,6 +411,7 @@ fun QuizScreen(
             }
 
             Card(
+                modifier = Modifier.semantics { contentDescription = "score_display" },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -423,6 +436,7 @@ fun QuizScreen(
             }
 
             Card(
+                modifier = Modifier.semantics { contentDescription = "streak_display" },
                 colors = CardDefaults.cardColors(
                     containerColor = if (streak > 0)
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
@@ -452,9 +466,10 @@ fun QuizScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Timer
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "timer_display" },
             colors = CardDefaults.cardColors(
                 containerColor = when {
                     timeLeft <= 5 -> Color(0xFFE63946).copy(alpha = 0.3f)
@@ -496,11 +511,11 @@ fun QuizScreen(
                 color = MaterialTheme.colorScheme.primary
             )
         } else {
-            // Pokemon image
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .scale(scale),
+                    .scale(scale)
+                    .semantics { contentDescription = "pokemon_card" },
                 colors = CardDefaults.cardColors(
                     containerColor = when {
                         showFeedback && isCorrect -> Color(0xFF06D6A0).copy(alpha = 0.2f)
@@ -528,7 +543,7 @@ fun QuizScreen(
                     pokemon?.sprites?.regular?.let { imageUrl ->
                         KamelImage(
                             resource = asyncPainterResource(imageUrl),
-                            contentDescription = "Pokemon à deviner",
+                            contentDescription = "pokemon_image",
                             modifier = Modifier.size(250.dp)
                         )
                     }
@@ -540,7 +555,8 @@ fun QuizScreen(
                             text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!",
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946)
+                            color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946),
+                            modifier = Modifier.semantics { contentDescription = "feedback_message" }
                         )
 
                         if (!isCorrect) {
@@ -553,7 +569,8 @@ fun QuizScreen(
                                 }",
                                 fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.semantics { contentDescription = "correct_answer_display" }
                             )
                         }
 
@@ -563,7 +580,8 @@ fun QuizScreen(
                                 text = "+$points points",
                                 fontSize = 16.sp,
                                 color = Color(0xFF06D6A0),
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.semantics { contentDescription = "points_earned" }
                             )
                         }
                     }
@@ -573,7 +591,6 @@ fun QuizScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             if (!showFeedback) {
-                // Answer input
                 OutlinedTextField(
                     value = userAnswer,
                     onValueChange = onAnswerChange,
@@ -585,7 +602,9 @@ fun QuizScreen(
                             }
                         )
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "answer_input" },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -603,7 +622,8 @@ fun QuizScreen(
                     onClick = onSubmit,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(56.dp)
+                        .semantics { contentDescription = "submit_button" },
                     enabled = userAnswer.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -622,7 +642,9 @@ fun QuizScreen(
 
                 OutlinedButton(
                     onClick = onQuit,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "quit_button" },
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.onBackground
                     ),
@@ -650,6 +672,7 @@ fun ResultsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .semantics { contentDescription = "results_screen" }
             .verticalScroll(scrollState)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -685,7 +708,8 @@ fun ResultsScreen(
                     text = score.toString(),
                     fontSize = 64.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.semantics { contentDescription = "final_score" }
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -698,9 +722,9 @@ fun ResultsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    StatItem("Questions", totalQuestions.toString())
-                    StatItem("Correctes", correctAnswers.toString())
-                    StatItem("Précision", "$accuracy%")
+                    StatItem("Questions", totalQuestions.toString(), "total_questions")
+                    StatItem("Correctes", correctAnswers.toString(), "correct_answers")
+                    StatItem("Précision", "$accuracy%", "accuracy")
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -714,7 +738,8 @@ fun ResultsScreen(
                     },
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.semantics { contentDescription = "performance_message" }
                 )
             }
         }
@@ -725,7 +750,8 @@ fun ResultsScreen(
             onClick = onPlayAgain,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(56.dp)
+                .semantics { contentDescription = "play_again_button" },
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary
             ),
@@ -743,9 +769,10 @@ fun ResultsScreen(
 }
 
 @Composable
-fun StatItem(label: String, value: String) {
+fun StatItem(label: String, value: String, contentDesc: String = "") {
     Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.semantics { contentDescription = contentDesc }
     ) {
         Text(
             text = value,
