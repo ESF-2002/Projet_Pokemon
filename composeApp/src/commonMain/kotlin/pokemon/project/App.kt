@@ -1,8 +1,10 @@
 package pokemon.project
 
-import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -21,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -41,6 +43,8 @@ fun App() {
     var isLoading by remember { mutableStateOf(false) }
     var correctAnswers by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    // Empêche les doubles résolutions (timeout + submit simultanés)
+    var questionResolved by remember { mutableStateOf(false) }
 
     // Timer effect
     LaunchedEffect(gameState, timeLeft) {
@@ -48,21 +52,27 @@ fun App() {
             delay(1000)
             timeLeft--
         } else if (gameState == GameState.PLAYING && timeLeft == 0 && !showFeedback) {
-            showFeedback = true
-            isCorrect = false
-            streak = 0
-            totalQuestions++
+            // éviter double résolution
+            if (!questionResolved) {
+                questionResolved = true
+                showFeedback = true
+                isCorrect = false
+                streak = 0
+                totalQuestions++
 
-            delay(2500)
+                delay(2500)
 
-            if (totalQuestions >= maxQuestions) {
-                gameState = GameState.RESULTS
-            } else {
-                showFeedback = false
-                loadNextPokemon(difficulty) { pokemon ->
-                    currentPokemon = pokemon
-                    userAnswer = ""
-                    timeLeft = 30
+                if (totalQuestions >= maxQuestions) {
+                    gameState = GameState.RESULTS
+                } else {
+                    showFeedback = false
+                    // préparer la prochaine question
+                    loadNextPokemon(scope) { pokemon ->
+                        currentPokemon = pokemon
+                        userAnswer = ""
+                        timeLeft = 30
+                        questionResolved = false
+                    }
                 }
             }
         }
@@ -96,7 +106,12 @@ fun App() {
                         streak = 0
                         totalQuestions = 0
                         correctAnswers = 0
-                        loadNextPokemon(selectedDifficulty) { pokemon ->
+                        // réinitialiser les flags visuels/état
+                        showFeedback = false
+                        isCorrect = false
+                        userAnswer = ""
+                        questionResolved = false
+                        loadNextPokemon(scope) { pokemon ->
                             currentPokemon = pokemon
                             timeLeft = 30
                             isLoading = false
@@ -108,6 +123,10 @@ fun App() {
                     userAnswer = userAnswer,
                     onAnswerChange = { userAnswer = it },
                     onSubmit = {
+                        // éviter double résolution si timeout et submit arrivent presque en même temps
+                        if (questionResolved) return@QuizScreen
+                        questionResolved = true
+
                         val correctName = when (difficulty) {
                             Difficulty.EASY -> currentPokemon?.name?.fr?.lowercase()
                             Difficulty.NORMAL -> currentPokemon?.name?.fr?.lowercase()
@@ -133,33 +152,56 @@ fun App() {
                                 gameState = GameState.RESULTS
                             } else {
                                 showFeedback = false
-                                loadNextPokemon(difficulty) { pokemon ->
+                                loadNextPokemon(scope) { pokemon ->
                                     currentPokemon = pokemon
                                     userAnswer = ""
                                     timeLeft = 30
+                                    questionResolved = false
                                 }
                             }
                         }
                     },
                     score = score,
-                    scope = scope,
                     streak = streak,
                     timeLeft = timeLeft,
                     showFeedback = showFeedback,
                     isCorrect = isCorrect,
                     difficulty = difficulty,
                     isLoading = isLoading,
-                    currentQuestion = totalQuestions + 1,
+                    // Afficher le numéro de la question en tenant compte si on est en phase de feedback
+                    currentQuestion = if (showFeedback) totalQuestions else totalQuestions + 1,
                     maxQuestions = maxQuestions,
                     onQuit = {
-                        gameState = GameState.RESULTS
+                        // permettre de revenir au menu depuis le quiz
+                        gameState = GameState.MENU
                     }
                 )
                 GameState.RESULTS -> ResultsScreen(
                     score = score,
                     totalQuestions = totalQuestions,
                     correctAnswers = correctAnswers,
-                    onPlayAgain = { gameState = GameState.MENU }
+                    onPlayAgain = {
+                        // relancer la partie avec la même config
+                        score = 0
+                        streak = 0
+                        totalQuestions = 0
+                        correctAnswers = 0
+                        showFeedback = false
+                        isCorrect = false
+                        userAnswer = ""
+                        questionResolved = false
+                        isLoading = true
+                        gameState = GameState.PLAYING
+                        loadNextPokemon(scope) { pokemon ->
+                            currentPokemon = pokemon
+                            timeLeft = 30
+                            isLoading = false
+                        }
+                    },
+                    onHome = {
+                        // revenir simplement au menu pour pouvoir changer la config
+                        gameState = GameState.MENU
+                    }
                 )
             }
         }
@@ -171,178 +213,128 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
     var selectedDifficulty by remember { mutableStateOf(Difficulty.NORMAL) }
     var selectedQuestions by remember { mutableIntStateOf(10) }
     val scrollState = rememberScrollState()
+    // gradient moderne
+    val backgroundBrush = Brush.verticalGradient(
+        colors = listOf(Color(0xFF0F172A), Color(0xFF1E293B))
+    )
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(backgroundBrush)
             .semantics { contentDescription = "menu_screen" }
-            .verticalScroll(scrollState)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Text(
-            text = "🎮 POKÉMON QUIZ",
-            fontSize = 48.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Devinez le nom du Pokémon!",
-            fontSize = 20.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            shape = RoundedCornerShape(16.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                text = "Pokémon Quiz",
+                fontSize = 36.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Devinez le Pokémon avant la fin du temps",
+                fontSize = 16.sp,
+                color = Color(0xFF94A3B8),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF111827)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0x22344556))
             ) {
-                Text(
-                    text = "Nombre de questions",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        text = "Nombre de questions",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF94A3B8)
+                    )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    listOf(5, 10, 15, 20).forEach { count ->
-                        FilterChip(
-                            selected = selectedQuestions == count,
-                            onClick = { selectedQuestions = count },
-                            label = {
-                                Text(
-                                    text = count.toString(),
-                                    fontWeight = FontWeight.Bold
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        listOf(5, 10, 15, 20).forEach { count ->
+                            Box(modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 6.dp)
+                                .clickable { selectedQuestions = count }
+                                .background(
+                                    color = if (selectedQuestions == count) Color(0xFFE63946) else Color(0xFF0B1220),
+                                    shape = RoundedCornerShape(12.dp)
                                 )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = Color.White
-                            )
-                        )
+                                .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = count.toString(), color = if (selectedQuestions == count) Color.White else Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(text = "Choisissez la difficulté", fontSize = 16.sp, color = Color(0xFF94A3B8))
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                listOf(Difficulty.EASY to "FACILE", Difficulty.NORMAL to "NORMAL", Difficulty.HARD to "DIFFICILE").forEach { (d, label) ->
+                    Box(modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp)
+                        .clickable { selectedDifficulty = d }
+                        .background(
+                            color = if (selectedDifficulty == d) Color(0xFFE63946) else Color(0xFF0B1220),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = label, color = if (selectedDifficulty == d) Color.White else Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
 
-        Text(
-            text = "Choisissez la difficulté",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = { onStartGame(selectedDifficulty, selectedQuestions) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .semantics { contentDescription = "start_button" },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE63946)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    text = "COMMENCER",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        DifficultyButton(
-            text = "🟢 FACILE",
-            description = "Noms en français, 30 secondes",
-            isSelected = selectedDifficulty == Difficulty.EASY,
-            onClick = { selectedDifficulty = Difficulty.EASY },
-            contentDesc = "difficulty_easy"
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        DifficultyButton(
-            text = "🟡 NORMAL",
-            description = "Noms en français, 30 secondes",
-            isSelected = selectedDifficulty == Difficulty.NORMAL,
-            onClick = { selectedDifficulty = Difficulty.NORMAL },
-            contentDesc = "difficulty_normal"
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        DifficultyButton(
-            text = "🔴 DIFFICILE",
-            description = "Noms en anglais, 30 secondes",
-            isSelected = selectedDifficulty == Difficulty.HARD,
-            onClick = { selectedDifficulty = Difficulty.HARD },
-            contentDesc = "difficulty_hard"
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        Button(
-            onClick = { onStartGame(selectedDifficulty, selectedQuestions) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .semantics { contentDescription = "start_button" },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            ),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(
-                text = "COMMENCER",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-    }
-}
-
-@Composable
-fun DifficultyButton(
-    text: String,
-    description: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    contentDesc: String = ""
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentDescription = contentDesc },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = text,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = description,
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -359,7 +351,6 @@ fun QuizScreen(
     showFeedback: Boolean,
     isCorrect: Boolean,
     difficulty: Difficulty,
-    scope: CoroutineScope,
     isLoading: Boolean,
     currentQuestion: Int,
     maxQuestions: Int,
@@ -664,7 +655,8 @@ fun ResultsScreen(
     score: Int,
     totalQuestions: Int,
     correctAnswers: Int,
-    onPlayAgain: () -> Unit
+    onPlayAgain: () -> Unit,
+    onHome: () -> Unit
 ) {
     val accuracy = if (totalQuestions > 0) ((correctAnswers.toFloat() / totalQuestions) * 100).toInt() else 0
     val scrollState = rememberScrollState()
@@ -680,18 +672,18 @@ fun ResultsScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "🏆 RÉSULTATS",
-            fontSize = 42.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            text = "Résultats",
+            fontSize = 36.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color(0xFFE63946)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color(0xFF0F172A)
             ),
             shape = RoundedCornerShape(16.dp)
         ) {
@@ -699,35 +691,18 @@ fun ResultsScreen(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Score Final",
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                Text(
-                    text = score.toString(),
-                    fontSize = 64.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.semantics { contentDescription = "final_score" }
-                )
+                Text(text = "Score Final", fontSize = 14.sp, color = Color(0xFF94A3B8))
+                Text(text = score.toString(), fontSize = 56.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.semantics { contentDescription = "final_score" })
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     StatItem("Questions", totalQuestions.toString(), "total_questions")
                     StatItem("Correctes", correctAnswers.toString(), "correct_answers")
                     StatItem("Précision", "$accuracy%", "accuracy")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
                     text = when {
@@ -736,32 +711,35 @@ fun ResultsScreen(
                         accuracy >= 50 -> "💪 Pas mal! Tu progresses!"
                         else -> "📚 Continue à t'entraîner!"
                     },
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    fontSize = 14.sp,
+                    color = Color(0xFF94A3B8),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.semantics { contentDescription = "performance_message" }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        Button(
-            onClick = onPlayAgain,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .semantics { contentDescription = "play_again_button" },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            ),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(
-                text = "REJOUER",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(
+                onClick = onPlayAgain,
+                modifier = Modifier.weight(1f).height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE63946)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("REJOUER", color = Color.White, fontWeight = FontWeight.ExtraBold)
+            }
+
+            OutlinedButton(
+                onClick = onHome,
+                modifier = Modifier.weight(1f).height(56.dp),
+                border = BorderStroke(1.dp, Color(0xFF94A3B8)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("ACCUEIL", fontWeight = FontWeight.Bold)
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -796,8 +774,8 @@ enum class Difficulty {
     EASY, NORMAL, HARD
 }
 
-fun loadNextPokemon(difficulty: Difficulty, onLoaded: (Pokemon?) -> Unit) {
-    kotlinx.coroutines.GlobalScope.launch {
+fun loadNextPokemon(scope: CoroutineScope, onLoaded: (Pokemon?) -> Unit) {
+    scope.launch {
         val pokemon = Greeting().fetchPokemon()
         onLoaded(pokemon)
     }

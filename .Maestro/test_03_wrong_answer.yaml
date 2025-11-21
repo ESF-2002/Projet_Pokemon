@@ -37,8 +37,7 @@ appId: pokemon.project
 # Vérifier le feedback négatif
 - assertVisible: "❌ FAUX!"
 
-# Vérifier que la bonne réponse est affichée
-- assertVisible: "C'était:"
+
 
 # Vérifier que le score est toujours 0
 - assertVisible:
