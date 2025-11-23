@@ -14,18 +14,25 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.kamel.image.KamelImage
-import io.kamel.image.asyncPainterResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import io.kamel.image.KamelImage
+import io.kamel.image.asyncPainterResource
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 
 @Composable
 fun App() {
@@ -106,7 +113,6 @@ fun App() {
                         streak = 0
                         totalQuestions = 0
                         correctAnswers = 0
-                        // réinitialiser les flags visuels/état
                         showFeedback = false
                         isCorrect = false
                         userAnswer = ""
@@ -119,10 +125,10 @@ fun App() {
                     }
                 )
                 GameState.PLAYING -> QuizScreen(
-                    pokemon = currentPokemon,
-                    userAnswer = userAnswer,
-                    onAnswerChange = { userAnswer = it },
-                    onSubmit = {
+                     pokemon = currentPokemon,
+                     userAnswer = userAnswer,
+                     onAnswerChange = { userAnswer = it },
+                     onSubmit = {
                         // éviter double résolution si timeout et submit arrivent presque en même temps
                         if (questionResolved) return@QuizScreen
                         questionResolved = true
@@ -168,14 +174,9 @@ fun App() {
                     isCorrect = isCorrect,
                     difficulty = difficulty,
                     isLoading = isLoading,
-                    // Afficher le numéro de la question en tenant compte si on est en phase de feedback
                     currentQuestion = if (showFeedback) totalQuestions else totalQuestions + 1,
-                    maxQuestions = maxQuestions,
-                    onQuit = {
-                        // permettre de revenir au menu depuis le quiz
-                        gameState = GameState.MENU
-                    }
-                )
+                    maxQuestions = maxQuestions
+                 )
                 GameState.RESULTS -> ResultsScreen(
                     score = score,
                     totalQuestions = totalQuestions,
@@ -213,7 +214,6 @@ fun MenuScreen(onStartGame: (Difficulty, Int) -> Unit) {
     var selectedDifficulty by remember { mutableStateOf(Difficulty.NORMAL) }
     var selectedQuestions by remember { mutableIntStateOf(10) }
     val scrollState = rememberScrollState()
-    // gradient moderne
     val backgroundBrush = Brush.verticalGradient(
         colors = listOf(Color(0xFF0F172A), Color(0xFF1E293B))
     )
@@ -353,300 +353,465 @@ fun QuizScreen(
     difficulty: Difficulty,
     isLoading: Boolean,
     currentQuestion: Int,
-    maxQuestions: Int,
-    onQuit: () -> Unit
+    maxQuestions: Int
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (showFeedback) 1.1f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-    )
-
     val scrollState = rememberScrollState()
+    val isWideScreenState = remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .semantics { contentDescription = "quiz_screen" }
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Card(
-                modifier = Modifier.semantics { contentDescription = "question_counter" },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Question",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = "$currentQuestion/$maxQuestions",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
+    val totalTime = 30f
+    val timerProgress = timeLeft / totalTime
+    val progressQuiz = currentQuestion.toFloat() / maxQuestions.toFloat()
+    val dynamicGradient = remember(showFeedback, isCorrect) {
+        if (showFeedback && isCorrect) Brush.verticalGradient(listOf(Color(0xFF022C22), Color(0xFF064E3B)))
+        else if (showFeedback && !isCorrect) Brush.verticalGradient(listOf(Color(0xFF3F0D13), Color(0xFF5A1E27)))
+        else Brush.linearGradient(listOf(Color(0xFF0F1124), Color(0xFF151B37), Color(0xFF1E2750)))
+    }
 
-            Card(
-                modifier = Modifier.semantics { contentDescription = "score_display" },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Score",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = score.toString(),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.semantics { contentDescription = "streak_display" },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (streak > 0)
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                    else
-                        MaterialTheme.colorScheme.surface
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Série",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-                    Text(
-                        text = "🔥 $streak",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (streak > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Card(
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent
+    ) { innerPadding ->
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentDescription = "timer_display" },
-            colors = CardDefaults.cardColors(
-                containerColor = when {
-                    timeLeft <= 5 -> Color(0xFFE63946).copy(alpha = 0.3f)
-                    timeLeft <= 10 -> Color(0xFFF77F00).copy(alpha = 0.3f)
-                    else -> MaterialTheme.colorScheme.surface
-                }
-            ),
-            shape = RoundedCornerShape(12.dp)
+                .fillMaxSize()
+                .background(dynamicGradient)
+                .semantics { contentDescription = "quiz_screen" }
+                .padding(innerPadding)
+                .padding(18.dp)
+                .verticalScroll(scrollState)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "⏱️ ",
-                    fontSize = 24.sp
-                )
-                Text(
-                    text = "${timeLeft}s",
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = when {
-                        timeLeft <= 5 -> Color(0xFFE63946)
-                        timeLeft <= 10 -> Color(0xFFF77F00)
-                        else -> MaterialTheme.colorScheme.onSurface
-                    }
-                )
+            val isWide = maxWidth > 720.dp
+            LaunchedEffect(isWide) {
+                isWideScreenState.value = isWide
             }
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(64.dp),
-                color = MaterialTheme.colorScheme.primary
+            val infinite = rememberInfiniteTransition()
+            val timerPulse by infinite.animateFloat(
+                initialValue = 1f,
+                targetValue = if (timeLeft <= 10) 1.08f else 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = if (timeLeft <= 5) 400 else 800, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                )
             )
-        } else {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .scale(scale)
-                    .semantics { contentDescription = "pokemon_card" },
-                colors = CardDefaults.cardColors(
-                    containerColor = when {
-                        showFeedback && isCorrect -> Color(0xFF06D6A0).copy(alpha = 0.2f)
-                        showFeedback && !isCorrect -> Color(0xFFE63946).copy(alpha = 0.2f)
-                        else -> MaterialTheme.colorScheme.surface
+
+            val localScope = rememberCoroutineScope()
+            var isVerifying by remember { mutableStateOf(false) }
+
+
+            val questionFocusRequester = remember { FocusRequester() }
+            val keyboardController = LocalSoftwareKeyboardController.current
+            val focusManager = LocalFocusManager.current
+
+            var imageVisible by remember { mutableStateOf(false) }
+            LaunchedEffect(pokemon?.sprites?.regular) {
+                imageVisible = false
+                if (pokemon?.sprites?.regular != null) {
+                    delay(60)
+                    imageVisible = true
+                    delay(80)
+                    try {
+                        questionFocusRequester.requestFocus()
+                    } catch (_: Exception) { }
+                }
+            }
+
+            LaunchedEffect(currentQuestion) {
+                delay(40)
+                try {
+                    focusManager.clearFocus(force = true)
+                    questionFocusRequester.requestFocus()
+                    keyboardController?.show()
+                } catch (_: Exception) { }
+            }
+
+            LaunchedEffect(pokemon) {
+                if (pokemon == null) return@LaunchedEffect
+                delay(60)
+                try {
+                    focusManager.clearFocus(force = true)
+                    questionFocusRequester.requestFocus()
+                    keyboardController?.show()
+                } catch (_: Exception) { }
+            }
+
+            val imageAlpha by animateFloatAsState(targetValue = if (imageVisible) 1f else 0f, animationSpec = tween(400))
+
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 6.dp)
+                }
+                return@BoxWithConstraints
+            }
+
+            if (isWide) {
+                Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    // left / image column
+                    Column(modifier = Modifier.weight(1f)) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0x661A2238)),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, Color(0x332F3D55))
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Column(modifier = Modifier.semantics { contentDescription = "question_counter" }) {
+                                        Text("Question", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                        Text("$currentQuestion/$maxQuestions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDEE9F7))
+                                    }
+                                    Column(modifier = Modifier.semantics { contentDescription = "score_display" }, horizontalAlignment = Alignment.End) {
+                                        Text("Score", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                        Text(score.toString(), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                LinearProgressIndicator(progress = { progressQuiz }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(8.dp)), trackColor = Color(0x332C3A52), color = if (showFeedback && isCorrect) Color(0xFF06D6A0) else MaterialTheme.colorScheme.primary)
+
+                                Spacer(Modifier.height(18.dp))
+
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF202C44)), shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).padding(end = 10.dp).semantics { contentDescription = "streak_display" }) {
+                                        Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("Série", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                            Text("🔥 $streak", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (streak > 0) MaterialTheme.colorScheme.primary else Color(0xFFDEE9F7))
+                                        }
+                                    }
+
+                                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF202C44)), shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).padding(start = 10.dp).semantics { contentDescription = "timer_display" }) {
+                                        Box(Modifier.padding(14.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.scale(timerPulse)) {
+                                                CircularProgressIndicator(progress = { timerProgress }, modifier = Modifier.size(70.dp), strokeWidth = 8.dp, color = when {
+                                                    timeLeft <= 5 -> Color(0xFFE63946)
+                                                    timeLeft <= 10 -> Color(0xFFF77F00)
+                                                    else -> MaterialTheme.colorScheme.primary
+                                                }, trackColor = Color(0x332C3A52))
+
+                                                Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                                                    Text("${timeLeft}s", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = when {
+                                                        timeLeft <= 5 -> Color(0xFFE63946)
+                                                        timeLeft <= 10 -> Color(0xFFF77F00)
+                                                        else -> Color(0xFFDEE9F7)
+                                                    })
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(22.dp))
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = when {
+                                    showFeedback && isCorrect -> Color(0x3306D6A0)
+                                    showFeedback && !isCorrect -> Color(0x33E63946)
+                                    else -> Color(0x66202C44)
+                                }
+                            ),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, Color(0x2240577A))
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = "Qui est ce Pokémon?", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDEE9F7))
+                                Spacer(modifier = Modifier.height(18.dp))
+
+                                pokemon?.sprites?.regular?.let { imageUrl ->
+                                    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        val imageSize = minOf(maxWidth * 0.7f, 320.dp)
+                                        KamelImage(
+                                            resource = asyncPainterResource(imageUrl),
+                                            contentDescription = "pokemon_image",
+                                            modifier = Modifier
+                                                .size(imageSize)
+                                                .clip(RoundedCornerShape(18.dp))
+                                                .alpha(imageAlpha)
+                                        )
+                                    }
+                                }
+
+                                if (showFeedback) {
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    Text(text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        val keyboardController = LocalSoftwareKeyboardController.current
+                        val inputEnabled = !showFeedback
+                        key(currentQuestion) {
+                            EnhancedInput(
+                                 answer = userAnswer,
+                                 onAnswerChange = onAnswerChange,
+                                 onSubmit = {
+                                    // animate verify
+                                    isVerifying = true
+                                    localScope.launch {
+                                        delay(600)
+                                        onSubmit()
+                                        isVerifying = false
+                                        keyboardController?.hide()
+                                    }
+                                },
+                                isVerifying = isVerifying,
+                                enabled = inputEnabled,
+                                focusRequester = questionFocusRequester
+                            )
+                        }
                     }
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Qui est ce Pokémon?",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (showFeedback) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (!isCorrect) {
+                                    Text(text = "C'était: ${when (difficulty) { Difficulty.EASY, Difficulty.NORMAL -> pokemon?.name?.fr; Difficulty.HARD -> pokemon?.name?.en }}", color = Color(0xFFDEE9F7))
+                                } else {
+                                    val points = 10 + (streak - 1) * 2 + timeLeft
+                                    Text(text = "+$points points", color = Color(0xFF06D6A0))
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0x661A2238)),
+                        shape = RoundedCornerShape(22.dp),
+                        border = BorderStroke(1.dp, Color(0x332F3D55))
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.semantics { contentDescription = "question_counter" }) {
+                                    Text("Question", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                    Text("$currentQuestion/$maxQuestions", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDEE9F7))
+                                }
+                                Column(modifier = Modifier.semantics { contentDescription = "score_display" }, horizontalAlignment = Alignment.End) {
+                                    Text("Score", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                    Text(score.toString(), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            LinearProgressIndicator(progress = { progressQuiz }, modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(8.dp)), trackColor = Color(0x332C3A52), color = if (showFeedback && isCorrect) Color(0xFF06D6A0) else MaterialTheme.colorScheme.primary)
+
+                            Spacer(Modifier.height(18.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF202C44)), shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).padding(end = 10.dp).semantics { contentDescription = "streak_display" }) {
+                                    Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("Série", fontSize = 12.sp, color = Color(0xFF8FA3C4))
+                                        Text("🔥 $streak", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (streak > 0) MaterialTheme.colorScheme.primary else Color(0xFFDEE9F7))
+                                    }
+                                }
+
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF202C44)), shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f).padding(start = 10.dp).semantics { contentDescription = "timer_display" }) {
+                                    Box(Modifier.padding(14.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(progress = { timerProgress }, modifier = Modifier.size(70.dp), strokeWidth = 8.dp, color = when {
+                                                timeLeft <= 5 -> Color(0xFFE63946)
+                                                timeLeft <= 10 -> Color(0xFFF77F00)
+                                                else -> MaterialTheme.colorScheme.primary
+                                            }, trackColor = Color(0x332C3A52))
+
+                                            Text("${timeLeft}s", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = when {
+                                                timeLeft <= 5 -> Color(0xFFE63946)
+                                                timeLeft <= 10 -> Color(0xFFF77F00)
+                                                else -> Color(0xFFDEE9F7)
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(26.dp))
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .scale(if (showFeedback) 1.04f else 1f),
+                        colors = CardDefaults.cardColors(
+                            containerColor = when {
+                                showFeedback && isCorrect -> Color(0x3306D6A0)
+                                showFeedback && !isCorrect -> Color(0x33E63946)
+                                else -> Color(0x66202C44)
+                            }
+                        ),
+                        shape = RoundedCornerShape(28.dp),
+                        border = BorderStroke(1.dp, Color(0x2240577A))
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "Qui est ce Pokémon?", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFDEE9F7))
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            pokemon?.sprites?.regular?.let { imageUrl ->
+                                KamelImage(
+                                    resource = asyncPainterResource(imageUrl),
+                                    contentDescription = "pokemon_image",
+                                    modifier = Modifier.size(260.dp)
+                                )
+                            }
+
+                            if (showFeedback) {
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Text(text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946))
+                            }
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    pokemon?.sprites?.regular?.let { imageUrl ->
-                        KamelImage(
-                            resource = asyncPainterResource(imageUrl),
-                            contentDescription = "pokemon_image",
-                            modifier = Modifier.size(250.dp)
+                    val keyboardControllerMobile = LocalSoftwareKeyboardController.current
+                    val inputEnabledMobile = !showFeedback
+
+                    key(currentQuestion) {
+                        EnhancedInput(
+                            answer = userAnswer,
+                            onAnswerChange = onAnswerChange,
+                            onSubmit = {
+                                isVerifying = true
+                                localScope.launch {
+                                    delay(800)
+                                    onSubmit()
+                                    isVerifying = false
+                                    keyboardControllerMobile?.hide()
+                                }
+                            },
+                            isVerifying = isVerifying,
+                            enabled = inputEnabledMobile,
+                            focusRequester = questionFocusRequester
                         )
                     }
-
-                    if (showFeedback) {
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946),
-                            modifier = Modifier.semantics { contentDescription = "feedback_message" }
-                        )
-
-                        if (!isCorrect) {
-                            Text(
-                                text = "C'était: ${
-                                    when (difficulty) {
-                                        Difficulty.EASY, Difficulty.NORMAL -> pokemon?.name?.fr
-                                        Difficulty.HARD -> pokemon?.name?.en
-                                    }
-                                }",
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.semantics { contentDescription = "correct_answer_display" }
-                            )
-                        }
-
-                        if (isCorrect) {
-                            val points = 10 + (streak - 1) * 2 + timeLeft
-                            Text(
-                                text = "+$points points",
-                                fontSize = 16.sp,
-                                color = Color(0xFF06D6A0),
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.semantics { contentDescription = "points_earned" }
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            if (!showFeedback) {
-                OutlinedTextField(
-                    value = userAnswer,
-                    onValueChange = onAnswerChange,
-                    label = {
-                        Text(
-                            when (difficulty) {
-                                Difficulty.EASY, Difficulty.NORMAL -> "Nom en français"
-                                Difficulty.HARD -> "Nom en anglais"
-                            }
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "answer_input" },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        cursorColor = MaterialTheme.colorScheme.primary
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = onSubmit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .semantics { contentDescription = "submit_button" },
-                    enabled = userAnswer.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        text = "✓ VÉRIFIER LA RÉPONSE",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedButton(
-                    onClick = onQuit,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "quit_button" },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onBackground
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Terminer le quiz")
                 }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
+@Composable
+fun EnhancedInput(
+    answer: String,
+    onAnswerChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    isVerifying: Boolean,
+    enabled: Boolean,
+    focusRequester: FocusRequester
+) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        LaunchedEffect(focusRequester) {
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) { }
+        }
+
+        var boxFocused by remember { mutableStateOf(false) }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+            border = BorderStroke(1.dp, if (boxFocused) Color(0x44E63946) else Color(0x2240577A))
+        ) {
+            Box(modifier = Modifier
+                .fillMaxWidth()
+            ) {
+                val inputBrush = Brush.horizontalGradient(listOf(Color(0xFF202C44), Color(0xFF253548)))
+                Box(modifier = Modifier
+                    .matchParentSize()
+                    .background(inputBrush)
+                )
+
+                Box(modifier = Modifier
+                    .matchParentSize()
+                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.02f), Color.Transparent)))
+                )
+
+                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier
+                        .width(6.dp)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Brush.verticalGradient(listOf(Color(0xFFE63946), Color(0xFFE06A5A))))
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    val canSubmit = enabled && answer.isNotBlank()
+                    TextField(
+                        value = answer,
+                        onValueChange = onAnswerChange,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { boxFocused = it.isFocused }
+                            .padding(end = 0.dp),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        ),
+                        placeholder = {
+                            Text(text = "Entrez votre réponse...", color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                        },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (isVerifying) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.6.dp)
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (canSubmit) Color(0xFFE63946) else Color(0xFF6A2630))
+                                        .then(if (canSubmit) Modifier.clickable { onSubmit(); try { keyboardController?.hide() } catch (_: Exception) { } } else Modifier),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("✓", color = if (canSubmit) Color.White else Color(0xFF94A3B8), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
+                            }
+                        }
+                     )
+                }
+            }
+        }
+    }
+}
+
+enum class GameState {
+    MENU, PLAYING, RESULTS
+}
+
+enum class Difficulty {
+    EASY, NORMAL, HARD
+}
+
+fun loadNextPokemon(scope: CoroutineScope, onLoaded: (Pokemon?) -> Unit) {
+    scope.launch {
+        val pokemon = try {
+            Greeting().fetchPokemon()
+        } catch (_: Exception) {
+            null
+        }
+        onLoaded(pokemon)
     }
 }
 
@@ -763,20 +928,5 @@ fun StatItem(label: String, value: String, contentDesc: String = "") {
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
-    }
-}
-
-enum class GameState {
-    MENU, PLAYING, RESULTS
-}
-
-enum class Difficulty {
-    EASY, NORMAL, HARD
-}
-
-fun loadNextPokemon(scope: CoroutineScope, onLoaded: (Pokemon?) -> Unit) {
-    scope.launch {
-        val pokemon = Greeting().fetchPokemon()
-        onLoaded(pokemon)
     }
 }
