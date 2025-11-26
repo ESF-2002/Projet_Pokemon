@@ -1,4 +1,4 @@
-package pokemon.project
+package pokemon.project.model
 
 import kotlinx.serialization.Serializable
 

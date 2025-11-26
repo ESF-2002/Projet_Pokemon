@@ -1,4 +1,4 @@
-package pokemon.project
+package pokemon.project.platform
 
 import platform.UIKit.UIDevice
 

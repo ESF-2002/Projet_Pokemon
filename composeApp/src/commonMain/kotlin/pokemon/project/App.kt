@@ -1,5 +1,10 @@
 package pokemon.project
 
+import pokemon.project.model.Pokemon
+import pokemon.project.data.Greeting
+import pokemon.project.components.EnhancedInput
+import pokemon.project.components.ResultStatCard
+import pokemon.project.components.CompactPerf
 import androidx.compose.animation.core.*
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.foundation.background
@@ -30,8 +35,6 @@ import io.kamel.image.KamelImage
 import io.kamel.image.asyncPainterResource
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 
 @Composable
@@ -50,16 +53,13 @@ fun App() {
     var isLoading by remember { mutableStateOf(false) }
     var correctAnswers by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    // Empêche les doubles résolutions (timeout + submit simultanés)
     var questionResolved by remember { mutableStateOf(false) }
 
-    // Timer effect
     LaunchedEffect(gameState, timeLeft) {
         if (gameState == GameState.PLAYING && timeLeft > 0 && !showFeedback) {
             delay(1000)
             timeLeft--
         } else if (gameState == GameState.PLAYING && timeLeft == 0 && !showFeedback) {
-            // éviter double résolution
             if (!questionResolved) {
                 questionResolved = true
                 showFeedback = true
@@ -73,7 +73,6 @@ fun App() {
                     gameState = GameState.RESULTS
                 } else {
                     showFeedback = false
-                    // préparer la prochaine question
                     loadNextPokemon(scope) { pokemon ->
                         currentPokemon = pokemon
                         userAnswer = ""
@@ -125,11 +124,10 @@ fun App() {
                     }
                 )
                 GameState.PLAYING -> QuizScreen(
-                     pokemon = currentPokemon,
-                     userAnswer = userAnswer,
-                     onAnswerChange = { userAnswer = it },
-                     onSubmit = {
-                        // éviter double résolution si timeout et submit arrivent presque en même temps
+                    pokemon = currentPokemon,
+                    userAnswer = userAnswer,
+                    onAnswerChange = { userAnswer = it },
+                    onSubmit = {
                         if (questionResolved) return@QuizScreen
                         questionResolved = true
 
@@ -176,13 +174,13 @@ fun App() {
                     isLoading = isLoading,
                     currentQuestion = if (showFeedback) totalQuestions else totalQuestions + 1,
                     maxQuestions = maxQuestions
-                 )
+                )
                 GameState.RESULTS -> ResultsScreen(
                     score = score,
                     totalQuestions = totalQuestions,
                     correctAnswers = correctAnswers,
+                    streak = streak,
                     onPlayAgain = {
-                        // relancer la partie avec la même config
                         score = 0
                         streak = 0
                         totalQuestions = 0
@@ -200,7 +198,6 @@ fun App() {
                         }
                     },
                     onHome = {
-                        // revenir simplement au menu pour pouvoir changer la config
                         gameState = GameState.MENU
                     }
                 )
@@ -400,7 +397,6 @@ fun QuizScreen(
 
 
             val questionFocusRequester = remember { FocusRequester() }
-            val keyboardController = LocalSoftwareKeyboardController.current
             val focusManager = LocalFocusManager.current
 
             var imageVisible by remember { mutableStateOf(false) }
@@ -410,9 +406,6 @@ fun QuizScreen(
                     delay(60)
                     imageVisible = true
                     delay(80)
-                    try {
-                        questionFocusRequester.requestFocus()
-                    } catch (_: Exception) { }
                 }
             }
 
@@ -420,8 +413,6 @@ fun QuizScreen(
                 delay(40)
                 try {
                     focusManager.clearFocus(force = true)
-                    questionFocusRequester.requestFocus()
-                    keyboardController?.show()
                 } catch (_: Exception) { }
             }
 
@@ -430,8 +421,6 @@ fun QuizScreen(
                 delay(60)
                 try {
                     focusManager.clearFocus(force = true)
-                    questionFocusRequester.requestFocus()
-                    keyboardController?.show()
                 } catch (_: Exception) { }
             }
 
@@ -446,7 +435,6 @@ fun QuizScreen(
 
             if (isWide) {
                 Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    // left / image column
                     Column(modifier = Modifier.weight(1f)) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -538,7 +526,60 @@ fun QuizScreen(
 
                                 if (showFeedback) {
                                     Spacer(modifier = Modifier.height(18.dp))
-                                    Text(text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946))
+                                    if (isCorrect) {
+                                        val points = 10 + (streak - 1) * 2 + timeLeft
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                modifier = Modifier
+                                                    .wrapContentWidth()
+                                            ) {
+                                                Text(text = "✅", fontSize = 26.sp)
+                                                Column(horizontalAlignment = Alignment.Start) {
+                                                    Text(
+                                                        text = "CORRECT!",
+                                                        fontSize = 26.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF06D6A0)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = Color(0xFF083F2E).copy(alpha = 0.6f),
+                                                        tonalElevation = 0.dp
+                                                    ) {
+                                                        Text(
+                                                            text = "+${points} pts",
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                            color = Color(0xFF9EF0C5),
+                                                            fontSize = 13.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(text = "❌ FAUX!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE63946))
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                val correctName = when (difficulty) {
+                                                    Difficulty.EASY, Difficulty.NORMAL -> pokemon?.name?.fr
+                                                    Difficulty.HARD -> pokemon?.name?.en
+                                                }
+                                                if (!correctName.isNullOrBlank()) {
+                                                    Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF2A1013).copy(alpha = 0.35f)) {
+                                                        Text(text = "C'était : ${correctName}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color(0xFFFFD6D6))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -551,7 +592,6 @@ fun QuizScreen(
                                  answer = userAnswer,
                                  onAnswerChange = onAnswerChange,
                                  onSubmit = {
-                                    // animate verify
                                     isVerifying = true
                                     localScope.launch {
                                         delay(600)
@@ -670,7 +710,33 @@ fun QuizScreen(
 
                             if (showFeedback) {
                                 Spacer(modifier = Modifier.height(20.dp))
-                                Text(text = if (isCorrect) "✅ CORRECT!" else "❌ FAUX!", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = if (isCorrect) Color(0xFF06D6A0) else Color(0xFFE63946))
+                                if (isCorrect) {
+                                    val points = 10 + (streak - 1) * 2 + timeLeft
+                                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text(text = "✅", fontSize = 30.sp)
+                                            Text(text = "CORRECT!", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF06D6A0))
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Surface(shape = RoundedCornerShape(14.dp), color = Color(0xFF083F2E).copy(alpha = 0.6f)) {
+                                            Text(text = "+${points} pts", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color(0xFF9EF0C5), fontSize = 14.sp)
+                                        }
+                                    }
+                                } else {
+                                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(text = "❌ FAUX!", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE63946))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        val correctName = when (difficulty) {
+                                            Difficulty.EASY, Difficulty.NORMAL -> pokemon?.name?.fr
+                                            Difficulty.HARD -> pokemon?.name?.en
+                                        }
+                                        if (!correctName.isNullOrBlank()) {
+                                            Surface(shape = RoundedCornerShape(12.dp), color = Color(0xFF2A1013).copy(alpha = 0.35f)) {
+                                                Text(text = "C'était : ${correctName}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color(0xFFFFD6D6), fontSize = 14.sp)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -704,98 +770,6 @@ fun QuizScreen(
     }
 }
 
-@Composable
-fun EnhancedInput(
-    answer: String,
-    onAnswerChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-    isVerifying: Boolean,
-    enabled: Boolean,
-    focusRequester: FocusRequester
-) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        LaunchedEffect(focusRequester) {
-            try {
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            } catch (_: Exception) { }
-        }
-
-        var boxFocused by remember { mutableStateOf(false) }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            border = BorderStroke(1.dp, if (boxFocused) Color(0x44E63946) else Color(0x2240577A))
-        ) {
-            Box(modifier = Modifier
-                .fillMaxWidth()
-            ) {
-                val inputBrush = Brush.horizontalGradient(listOf(Color(0xFF202C44), Color(0xFF253548)))
-                Box(modifier = Modifier
-                    .matchParentSize()
-                    .background(inputBrush)
-                )
-
-                Box(modifier = Modifier
-                    .matchParentSize()
-                    .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.02f), Color.Transparent)))
-                )
-
-                Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier
-                        .width(6.dp)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Brush.verticalGradient(listOf(Color(0xFFE63946), Color(0xFFE06A5A))))
-                    )
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    val canSubmit = enabled && answer.isNotBlank()
-                    TextField(
-                        value = answer,
-                        onValueChange = onAnswerChange,
-                        enabled = enabled,
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(focusRequester)
-                            .onFocusChanged { boxFocused = it.isFocused }
-                            .padding(end = 0.dp),
-                        textStyle = LocalTextStyle.current.copy(
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        ),
-                        placeholder = {
-                            Text(text = "Entrez votre réponse...", color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
-                        },
-                        singleLine = true,
-                        trailingIcon = {
-                            if (isVerifying) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.6.dp)
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (canSubmit) Color(0xFFE63946) else Color(0xFF6A2630))
-                                        .then(if (canSubmit) Modifier.clickable { onSubmit(); try { keyboardController?.hide() } catch (_: Exception) { } } else Modifier),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("✓", color = if (canSubmit) Color.White else Color(0xFF94A3B8), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                }
-                            }
-                        }
-                     )
-                }
-            }
-        }
-    }
-}
-
 enum class GameState {
     MENU, PLAYING, RESULTS
 }
@@ -820,113 +794,130 @@ fun ResultsScreen(
     score: Int,
     totalQuestions: Int,
     correctAnswers: Int,
+    streak: Int,
     onPlayAgain: () -> Unit,
     onHome: () -> Unit
 ) {
     val accuracy = if (totalQuestions > 0) ((correctAnswers.toFloat() / totalQuestions) * 100).toInt() else 0
     val scrollState = rememberScrollState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .semantics { contentDescription = "results_screen" }
-            .verticalScroll(scrollState)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    val displayedScore by animateIntAsState(targetValue = score, animationSpec = tween(durationMillis = 900))
+    val displayedAccuracy by animateIntAsState(targetValue = accuracy, animationSpec = tween(durationMillis = 900))
+    val ringProgress by animateFloatAsState(targetValue = displayedAccuracy / 100f, animationSpec = tween(durationMillis = 900))
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .verticalScroll(scrollState)
+        .padding(20.dp)
+        .semantics { contentDescription = "results_screen" }
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "Résultats",
-            fontSize = 36.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color(0xFFE63946)
-        )
+            Box(modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF0B1220), Color(0xFF16202B))))
+                .padding(18.dp), contentAlignment = Alignment.Center) {
 
-        Spacer(modifier = Modifier.height(24.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "Résultats", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "Récapitulatif de votre partie", fontSize = 14.sp, color = Color(0xFF94A3B8))
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF0F172A)
-            ),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(text = "Score Final", fontSize = 14.sp, color = Color(0xFF94A3B8))
-                Text(text = score.toString(), fontSize = 56.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.semantics { contentDescription = "final_score" })
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(progress = { ringProgress }, modifier = Modifier.size(128.dp), strokeWidth = 12.dp, color = when {
+                                displayedAccuracy >= 90 -> Color(0xFF06D6A0)
+                                displayedAccuracy >= 70 -> Color(0xFF4CC9F0)
+                                displayedAccuracy >= 50 -> Color(0xFFF7C948)
+                                else -> Color(0xFFE63946)
+                            }, trackColor = Color(0x332C3A52))
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    StatItem("Questions", totalQuestions.toString(), "total_questions")
-                    StatItem("Correctes", correctAnswers.toString(), "correct_answers")
-                    StatItem("Précision", "$accuracy%", "accuracy")
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = "$displayedAccuracy%", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                                Text(text = "Précision", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                            }
+                        }
+
+                        Column(modifier = Modifier.width(160.dp)) {
+                            Text(text = "Score", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                            Text(text = "$displayedScore", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(text = "Questions: $totalQuestions", color = Color(0xFF94A3B8))
+                            Text(text = "Correctes: $correctAnswers", color = Color(0xFF94A3B8))
+                            Text(text = "Série: $streak", color = Color(0xFF94A3B8))
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onPlayAgain, modifier = Modifier.weight(1f).height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(14.dp)) {
+                    Text("REJOUER", color = Color.White, fontWeight = FontWeight.ExtraBold)
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = when {
-                        accuracy >= 90 -> "🌟 Excellent! Maître Pokémon!"
-                        accuracy >= 70 -> "👍 Très bien! Continue comme ça!"
-                        accuracy >= 50 -> "💪 Pas mal! Tu progresses!"
-                        else -> "📚 Continue à t'entraîner!"
-                    },
-                    fontSize = 14.sp,
-                    color = Color(0xFF94A3B8),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.semantics { contentDescription = "performance_message" }
-                )
+                OutlinedButton(onClick = onHome, modifier = Modifier.weight(1f).height(56.dp), border = BorderStroke(1.dp, Color(0xFF94A3B8)), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)), shape = RoundedCornerShape(14.dp)) {
+                    Text("ACCUEIL", fontWeight = FontWeight.Bold)
+                }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF071022)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0x22344556))) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "Détails de la partie", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text(text = "Résumé rapide", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ResultStatCard(label = "Questions", value = totalQuestions.toString(), accent = Color(0xFF4CC9F0), modifier = Modifier.weight(1f))
+                        ResultStatCard(label = "Correctes", value = correctAnswers.toString(), accent = Color(0xFF06D6A0), modifier = Modifier.weight(1f))
+                        ResultStatCard(label = "Score", value = score.toString(), accent = Color(0xFFE63946), modifier = Modifier.weight(1f))
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(text = "Performance", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CompactPerf(label = "Précision", percent = displayedAccuracy.coerceIn(0,100), accent = Color(0xFF4CC9F0), modifier = Modifier.weight(1f))
+                            val correctPercent = if (totalQuestions > 0) ((correctAnswers * 100) / totalQuestions) else 0
+                            CompactPerf(label = "Exactitude", percent = correctPercent.coerceIn(0,100), accent = Color(0xFF06D6A0), modifier = Modifier.weight(1f))
+                            CompactPerf(label = "Série", percent = (streak * 10).coerceIn(0,100), accent = Color(0xFFE63946), modifier = Modifier.weight(1f))
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(onClick = { /* share */ }, modifier = Modifier.weight(1f).height(44.dp), border = BorderStroke(1.dp, Color(0xFF94A3B8)), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)), shape = RoundedCornerShape(12.dp)) {
+                                Text(text = "Partager", fontWeight = FontWeight.SemiBold)
+                            }
+
+                            Button(onClick = onHome, modifier = Modifier.weight(1f).height(44.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(12.dp)) {
+                                Text(text = "Classement", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Box(modifier = Modifier.fillMaxWidth().padding(6.dp), contentAlignment = Alignment.Center) {
+                Text(text = "Merci d'avoir joué! • Partagez vos résultats avec vos amis.", color = Color(0xFF94A3B8), fontSize = 12.sp)
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(
-                onClick = onPlayAgain,
-                modifier = Modifier.weight(1f).height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE63946)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("REJOUER", color = Color.White, fontWeight = FontWeight.ExtraBold)
-            }
-
-            OutlinedButton(
-                onClick = onHome,
-                modifier = Modifier.weight(1f).height(56.dp),
-                border = BorderStroke(1.dp, Color(0xFF94A3B8)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("ACCUEIL", fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-    }
-}
-
-@Composable
-fun StatItem(label: String, value: String, contentDesc: String = "") {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.semantics { contentDescription = contentDesc }
-    ) {
-        Text(
-            text = value,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-        )
     }
 }

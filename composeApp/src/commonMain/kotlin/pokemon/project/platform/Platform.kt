@@ -1,4 +1,4 @@
-package pokemon.project
+package pokemon.project.platform
 
 interface Platform {
     val name: String
