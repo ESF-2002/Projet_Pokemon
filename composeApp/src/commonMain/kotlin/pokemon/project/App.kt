@@ -805,6 +805,15 @@ fun ResultsScreen(
     val displayedAccuracy by animateIntAsState(targetValue = accuracy, animationSpec = tween(durationMillis = 900))
     val ringProgress by animateFloatAsState(targetValue = displayedAccuracy / 100f, animationSpec = tween(durationMillis = 900))
 
+    var showFooter by remember { mutableStateOf(false) }
+    LaunchedEffect(displayedScore, displayedAccuracy) {
+        showFooter = false
+        delay(120)
+        showFooter = true
+    }
+    val footerAlpha by animateFloatAsState(targetValue = if (showFooter) 1f else 0f, animationSpec = tween(480))
+    val footerScale by animateFloatAsState(targetValue = if (showFooter) 1f else 0.96f, animationSpec = tween(480))
+
     Box(modifier = Modifier
         .fillMaxSize()
         .verticalScroll(scrollState)
@@ -823,7 +832,15 @@ fun ResultsScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = "Résultats", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Récapitulatif de votre partie", fontSize = 14.sp, color = Color(0xFF94A3B8))
+                    val summaryMessage = when {
+                        displayedAccuracy >= 90 -> "🏆 Félicitations — performance exceptionnelle !"
+                        displayedAccuracy >= 75 -> "✨ Très bon résultat — bravo !"
+                        displayedAccuracy >= 50 -> "👍 Bon travail — tu progresses !"
+                        displayedScore > 0 -> "💪 Belle tentative — continue pour t'améliorer !"
+                        else -> "🎯 Prêt à jouer ? Lance ta première partie !"
+                    }
+
+                    Text(text = summaryMessage, fontSize = 14.sp, color = Color(0xFF94A3B8))
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -870,42 +887,39 @@ fun ResultsScreen(
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF071022)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0x22344556))) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "Détails de la partie", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Text(text = "Résumé rapide", fontSize = 12.sp, color = Color(0xFF94A3B8))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Détails de la partie", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val detailsMessage = when {
+                                displayedAccuracy >= 90 -> "🏆 Performance exceptionnelle — bravo !"
+                                displayedAccuracy >= 75 -> "✨ Très bon score — bien joué !"
+                                displayedAccuracy >= 50 -> "👍 Bon résultat — continue comme ça !"
+                                displayedScore > 0 -> "🎉 Tu as marqué des points — belle partie !"
+                                else -> "🔁 Pas de points cette fois — réessaie pour t'améliorer !"
+                            }
+                            Text(text = detailsMessage, fontSize = 12.sp, color = Color(0xFF94A3B8))
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         ResultStatCard(label = "Questions", value = totalQuestions.toString(), accent = Color(0xFF4CC9F0), modifier = Modifier.weight(1f))
                         ResultStatCard(label = "Correctes", value = correctAnswers.toString(), accent = Color(0xFF06D6A0), modifier = Modifier.weight(1f))
-                        ResultStatCard(label = "Score", value = score.toString(), accent = Color(0xFFE63946), modifier = Modifier.weight(1f))
-                    }
+                        ResultStatCard(label = "Série", value = "${streak}", accent = Color(0xFFE63946), modifier = Modifier.weight(1f))
+                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(text = "Performance", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        Spacer(modifier = Modifier.height(8.dp))
-
+                        Spacer(modifier = Modifier.height(10.dp))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             CompactPerf(label = "Précision", percent = displayedAccuracy.coerceIn(0,100), accent = Color(0xFF4CC9F0), modifier = Modifier.weight(1f))
                             val correctPercent = if (totalQuestions > 0) ((correctAnswers * 100) / totalQuestions) else 0
                             CompactPerf(label = "Exactitude", percent = correctPercent.coerceIn(0,100), accent = Color(0xFF06D6A0), modifier = Modifier.weight(1f))
                             CompactPerf(label = "Série", percent = (streak * 10).coerceIn(0,100), accent = Color(0xFFE63946), modifier = Modifier.weight(1f))
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(onClick = { /* share */ }, modifier = Modifier.weight(1f).height(44.dp), border = BorderStroke(1.dp, Color(0xFF94A3B8)), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)), shape = RoundedCornerShape(12.dp)) {
-                                Text(text = "Partager", fontWeight = FontWeight.SemiBold)
-                            }
-
-                            Button(onClick = onHome, modifier = Modifier.weight(1f).height(44.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(12.dp)) {
-                                Text(text = "Classement", color = Color.White, fontWeight = FontWeight.SemiBold)
-                            }
                         }
                     }
                 }
@@ -913,8 +927,21 @@ fun ResultsScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            Box(modifier = Modifier.fillMaxWidth().padding(6.dp), contentAlignment = Alignment.Center) {
-                Text(text = "Merci d'avoir joué! • Partagez vos résultats avec vos amis.", color = Color(0xFF94A3B8), fontSize = 12.sp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(6.dp)
+                    .alpha(footerAlpha)
+                    .scale(footerScale),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Tu as joué comme un champion — encore une partie ? 🎮",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2
+                )
             }
 
             Spacer(modifier = Modifier.height(28.dp))
